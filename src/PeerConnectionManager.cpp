@@ -658,46 +658,46 @@ const Json::Value PeerConnectionManager::createOffer(const std::string &peerid, 
 
 		if (!this->AddStreams(peerConnection.get(), videourl, audiourl, options))
 		{
-			RTC_LOG(LS_WARNING) << "Can't add stream";
-		}
-
-		// register peerid
-		{
-			std::lock_guard<std::mutex> peerlock(m_peerMapMutex);
-			m_peer_connectionobs_map.insert(std::pair<std::string, PeerConnectionObserver *>(peerid, peerConnectionObserver));
-		}
-
-		// ask to create offer
-		webrtc::PeerConnectionInterface::RTCOfferAnswerOptions rtcoptions;
-		rtcoptions.offer_to_receive_video = 0;
-		rtcoptions.offer_to_receive_audio = 0;
-		std::promise<const webrtc::SessionDescriptionInterface *> localpromise;
-		rtc::scoped_refptr<CreateSessionDescriptionObserver> localSessionObserver(CreateSessionDescriptionObserver::Create(peerConnection, localpromise));
-		peerConnection->CreateOffer(localSessionObserver.get(), rtcoptions);
-
-		// waiting for offer
-		std::future<const webrtc::SessionDescriptionInterface *> future = localpromise.get_future();
-		if (future.wait_for(std::chrono::milliseconds(5000)) == std::future_status::ready)
-		{
-			// answer with the created offer
-			const webrtc::SessionDescriptionInterface *desc = future.get();
-			if (desc)
+			RTC_LOG(LS_ERROR) << "Can't add stream";
+		} else {
+			// register peerid
 			{
-				std::string sdp;
-				desc->ToString(&sdp);
+				std::lock_guard<std::mutex> peerlock(m_peerMapMutex);
+				m_peer_connectionobs_map.insert(std::pair<std::string, PeerConnectionObserver *>(peerid, peerConnectionObserver));
+			}
 
-				offer[kSessionDescriptionTypeName] = desc->type();
-				offer[kSessionDescriptionSdpName] = sdp;
+			// ask to create offer
+			webrtc::PeerConnectionInterface::RTCOfferAnswerOptions rtcoptions;
+			rtcoptions.offer_to_receive_video = 0;
+			rtcoptions.offer_to_receive_audio = 0;
+			std::promise<const webrtc::SessionDescriptionInterface *> localpromise;
+			rtc::scoped_refptr<CreateSessionDescriptionObserver> localSessionObserver(CreateSessionDescriptionObserver::Create(peerConnection, localpromise));
+			peerConnection->CreateOffer(localSessionObserver.get(), rtcoptions);
+
+			// waiting for offer
+			std::future<const webrtc::SessionDescriptionInterface *> future = localpromise.get_future();
+			if (future.wait_for(std::chrono::milliseconds(5000)) == std::future_status::ready)
+			{
+				// answer with the created offer
+				const webrtc::SessionDescriptionInterface *desc = future.get();
+				if (desc)
+				{
+					std::string sdp;
+					desc->ToString(&sdp);
+
+					offer[kSessionDescriptionTypeName] = desc->type();
+					offer[kSessionDescriptionSdpName] = sdp;
+				}
+				else
+				{
+					RTC_LOG(LS_ERROR) << "Failed to create offer - no session";
+				}
 			}
 			else
 			{
-				RTC_LOG(LS_ERROR) << "Failed to create offer - no session";
+				localSessionObserver->cancel();
+				RTC_LOG(LS_ERROR) << "Failed to create offer - timeout";
 			}
-		}
-		else
-		{
-			localSessionObserver->cancel();
-			RTC_LOG(LS_ERROR) << "Failed to create offer - timeout";
 		}
 	}
 	return offer;
@@ -805,60 +805,62 @@ std::unique_ptr<webrtc::SessionDescriptionInterface> PeerConnectionManager::getA
 		// add local stream
 		if (!this->AddStreams(peerConnection.get(), videourl, audiourl, options))
 		{
-			RTC_LOG(LS_WARNING) << "Can't add stream";
-		}
-
-		// set remote offer
-		std::promise<const webrtc::SessionDescriptionInterface *> remotepromise;
-		rtc::scoped_refptr<SetSessionDescriptionObserver> remoteSessionObserver(SetSessionDescriptionObserver::Create(peerConnection, remotepromise));
-		peerConnection->SetRemoteDescription(remoteSessionObserver.get(), session_description);
-		// waiting for remote description
-		std::future<const webrtc::SessionDescriptionInterface *> remotefuture = remotepromise.get_future();
-		if (remotefuture.wait_for(std::chrono::milliseconds(5000)) == std::future_status::ready)
-		{
-			RTC_LOG(LS_INFO) << "remote_description is ready";
-		}
-		else
-		{
-			remoteSessionObserver->cancel();
-			RTC_LOG(LS_WARNING) << "remote_description is NULL";
-		}
-
-		// create answer
-		webrtc::PeerConnectionInterface::RTCOfferAnswerOptions rtcoptions;
-		std::promise<const webrtc::SessionDescriptionInterface *> localpromise;
-		rtc::scoped_refptr<CreateSessionDescriptionObserver> localSessionObserver(CreateSessionDescriptionObserver::Create(peerConnection, localpromise));
-		peerConnection->CreateAnswer(localSessionObserver.get(), rtcoptions);
-
-		// wait gathering completion
-		if (waitgatheringcompletion) {
-			int retry = 5;
-			while ( (peerConnectionObserver->getGatheringState() != webrtc::PeerConnectionInterface::IceGatheringState::kIceGatheringComplete) && (retry > 0) ) {
-				RTC_LOG(LS_ERROR) << "waiting..." << retry;
-				retry --;
-				std::this_thread::sleep_for(std::chrono::milliseconds(250));
-			}
-		}
-
-		// waiting for answer
-		std::future<const webrtc::SessionDescriptionInterface *> localfuture = localpromise.get_future();
-		if (localfuture.wait_for(std::chrono::milliseconds(5000)) == std::future_status::ready)
-		{
-			const webrtc::SessionDescriptionInterface *desc = localfuture.get();
-			if (desc)
+			RTC_LOG(LS_ERROR) << "Can't add stream";
+		} else {
+			// set remote offer
+			std::promise<const webrtc::SessionDescriptionInterface *> remotepromise;
+			rtc::scoped_refptr<SetSessionDescriptionObserver> remoteSessionObserver(SetSessionDescriptionObserver::Create(peerConnection, remotepromise));
+			peerConnection->SetRemoteDescription(remoteSessionObserver.get(), session_description);
+			// waiting for remote description
+			std::future<const webrtc::SessionDescriptionInterface *> remotefuture = remotepromise.get_future();
+			if (remotefuture.wait_for(std::chrono::milliseconds(5000)) == std::future_status::ready)
 			{
-				answer = desc->Clone();
+				RTC_LOG(LS_INFO) << "remote_description is ready";
 			}
 			else
 			{
-				RTC_LOG(LS_ERROR) << "Failed to create answer - no SDP";
+				remoteSessionObserver->cancel();
+				RTC_LOG(LS_ERROR) << "remote_description timeout";
 			}
+
+			// create answer
+			webrtc::PeerConnectionInterface::RTCOfferAnswerOptions rtcoptions;
+			std::promise<const webrtc::SessionDescriptionInterface *> localpromise;
+			rtc::scoped_refptr<CreateSessionDescriptionObserver> localSessionObserver(CreateSessionDescriptionObserver::Create(peerConnection, localpromise));
+			peerConnection->CreateAnswer(localSessionObserver.get(), rtcoptions);
+
+			// wait gathering completion
+			if (waitgatheringcompletion) {
+				int retry = 5;
+				while ( (peerConnectionObserver->getGatheringState() != webrtc::PeerConnectionInterface::IceGatheringState::kIceGatheringComplete) && (retry > 0) ) {
+					RTC_LOG(LS_ERROR) << "waiting..." << retry;
+					retry --;
+					std::this_thread::sleep_for(std::chrono::milliseconds(250));
+				}
+			}
+
+			// waiting for answer
+			std::future<const webrtc::SessionDescriptionInterface *> localfuture = localpromise.get_future();
+			if (localfuture.wait_for(std::chrono::milliseconds(5000)) == std::future_status::ready)
+			{
+				const webrtc::SessionDescriptionInterface *desc = localfuture.get();
+				if (desc)
+				{
+					answer = desc->Clone();
+				}
+				else
+				{
+					RTC_LOG(LS_ERROR) << "Failed to create answer - no SDP";
+				}
+			}
+			else
+			{
+				RTC_LOG(LS_ERROR) << "Failed to create answer - timeout";
+				localSessionObserver->cancel();
+			}
+
 		}
-		else
-		{
-			RTC_LOG(LS_ERROR) << "Failed to create answer - timeout";
-			localSessionObserver->cancel();
-		}
+
 	}
 	return answer;
 }
@@ -937,38 +939,37 @@ const Json::Value PeerConnectionManager::hangUp(const std::string &peerid)
 			RTC_LOG(LS_ERROR) << "Remove PeerConnection peerid:" << peerid;
 			m_peer_connectionobs_map.erase(it);
 		}
+	}
+	if (pcObserver)
+	{
+		rtc::scoped_refptr<webrtc::PeerConnectionInterface> peerConnection = pcObserver->getPeerConnection();
 
-		if (pcObserver)
+		std::vector<rtc::scoped_refptr<webrtc::RtpSenderInterface>> localstreams = peerConnection->GetSenders();
+		for (auto stream : localstreams)
 		{
-			rtc::scoped_refptr<webrtc::PeerConnectionInterface> peerConnection = pcObserver->getPeerConnection();
-
-			std::vector<rtc::scoped_refptr<webrtc::RtpSenderInterface>> localstreams = peerConnection->GetSenders();
-			for (auto stream : localstreams)
-			{
-				std::vector<std::string> streamVector = stream->stream_ids();
-				if (streamVector.size() > 0) {
-					std::string streamLabel = streamVector[0];
-					bool stillUsed = this->streamStillUsed(streamLabel);
-					if (!stillUsed)
+			std::vector<std::string> streamVector = stream->stream_ids();
+			if (streamVector.size() > 0) {
+				std::string streamLabel = streamVector[0];
+				bool stillUsed = this->streamStillUsed(streamLabel);
+				if (!stillUsed)
+				{
+					RTC_LOG(LS_ERROR) << "hangUp stream is no more used " << streamLabel;
+					std::lock_guard<std::mutex> mlock(m_streamMapMutex);
+					std::map<std::string, std::pair<rtc::scoped_refptr<webrtc::VideoTrackSourceInterface>, rtc::scoped_refptr<webrtc::AudioSourceInterface>>>::iterator it = m_stream_map.find(streamLabel);
+					if (it != m_stream_map.end())
 					{
-						RTC_LOG(LS_ERROR) << "hangUp stream is no more used " << streamLabel;
-						std::lock_guard<std::mutex> mlock(m_streamMapMutex);
-						std::map<std::string, std::pair<rtc::scoped_refptr<webrtc::VideoTrackSourceInterface>, rtc::scoped_refptr<webrtc::AudioSourceInterface>>>::iterator it = m_stream_map.find(streamLabel);
-						if (it != m_stream_map.end())
-						{
-							m_stream_map.erase(it);
-						}
-
-						RTC_LOG(LS_ERROR) << "hangUp stream closed " << streamLabel;
+						m_stream_map.erase(it);
 					}
 
-					peerConnection->RemoveTrackOrError(stream);
+					RTC_LOG(LS_ERROR) << "hangUp stream closed " << streamLabel;
 				}
-			}
 
-			delete pcObserver;
-			result = true;
+				peerConnection->RemoveTrackOrError(stream);
+			}
 		}
+
+		delete pcObserver;
+		result = true;
 	}
 	Json::Value answer;
 	if (result)

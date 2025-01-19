@@ -13,11 +13,12 @@
 #pragma once
 
 class NullDecoder : public webrtc::VideoDecoder {
-   public:
+public:
  	NullDecoder(const webrtc::SdpVideoFormat& format) : m_format(format) {}
     virtual ~NullDecoder() override {}
 
 	bool Configure(const webrtc::VideoDecoder::Settings& settings) override { 
+		RTC_LOG(LS_ERROR) << "Configure format:" << m_format.name;
 		m_settings = settings;
 		return true; 
 	}
@@ -37,7 +38,7 @@ class NullDecoder : public webrtc::VideoDecoder {
 			return WEBRTC_VIDEO_CODEC_UNINITIALIZED;
 		}
 		rtc::scoped_refptr<webrtc::EncodedImageBufferInterface> encodedData = input_image.GetEncodedData();
-		rtc::scoped_refptr<webrtc::VideoFrameBuffer> frameBuffer = rtc::make_ref_counted<EncodedVideoFrameBuffer>(m_settings.max_render_resolution().Width(), m_settings.max_render_resolution().Height(), encodedData, input_image.FrameType());
+		rtc::scoped_refptr<webrtc::VideoFrameBuffer> frameBuffer = rtc::make_ref_counted<EncodedVideoFrameBuffer>(m_settings.max_render_resolution().Width(), m_settings.max_render_resolution().Height(), encodedData, input_image.FrameType(), m_format);
 		
 		webrtc::VideoFrame frame = webrtc::VideoFrame::Builder()
 					.set_video_frame_buffer(frameBuffer)
@@ -47,7 +48,7 @@ class NullDecoder : public webrtc::VideoDecoder {
 					.set_ntp_time_ms(input_image.NtpTimeMs())
 					.build();
 
-		RTC_LOG(LS_VERBOSE) << "Decode " << frame.id() << " " << input_image._frameType << " " <<  frameBuffer->width() << "x" <<  frameBuffer->height() << " " <<  frameBuffer->GetI420()->StrideY();
+		RTC_LOG(LS_VERBOSE) << "Decode " << frame.id() << " " << input_image._frameType << " " <<  frameBuffer->width() << "x" <<  frameBuffer->height();
 
 		m_decoded_image_callback->Decoded(frame);
 
@@ -56,6 +57,7 @@ class NullDecoder : public webrtc::VideoDecoder {
 
     const char* ImplementationName() const override { return "NullDecoder"; }
 
+private:
 	webrtc::DecodedImageCallback* m_decoded_image_callback;
 	webrtc::VideoDecoder::Settings m_settings;
 	webrtc::SdpVideoFormat m_format;	
